@@ -111,6 +111,18 @@ reason for the change.
 
 ## Performance Anti-Patterns
 
+<Alert variant="warning" title="Educational & Unaudited Examples">
+  The contract code snippets in this playbook are educational examples designed to demonstrate optimization techniques. They are <strong>unaudited and not production-ready</strong>. Production deployments must address key security and operational requirements:
+
+- <strong>Authorization:</strong> These snippets omit <code>require_auth()</code> and caller
+  verification for brevity. Real-world contracts must enforce explicit authorization on
+  state-changing operations.
+- <strong>Reentrancy:</strong> Although these snippets perform direct storage operations without
+  external contract calls, any pattern involving external calls must consider state ordering and
+  reentrancy protection.
+- <strong>Storage TTL & Data Expiry:</strong> All Soroban storage entries are subject to Time-To-Live (TTL) expiration. Production contracts must implement a TTL management strategy (such as <code>extend_ttl</code>) to keep ledger entries active.
+</Alert>
+
 ### 1. The "Linear Scan" Trap
 
 **Problem:** Iterating through a `Vec` stored in a single storage key to find or update an item. This is O(n) and becomes exponentially more expensive as the collection grows.
