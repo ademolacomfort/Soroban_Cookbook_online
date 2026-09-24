@@ -25,7 +25,7 @@ import TabItem from '@theme/TabItem';
 
 # Oracle Price Source Pattern
 
-The **oracle price source** (producer) pattern describes how a trusted account publishes on-chain price data that other contracts can consume.  It is the counterpart to the [Oracle Consumer](./oracle-consumer.mdx) pattern, which explains how to *read* prices; this page explains how to *publish* them.
+The **oracle price source** (producer) pattern describes how a trusted account publishes on-chain price data that other contracts can consume. It is the counterpart to the [Oracle Consumer](./oracle-consumer.mdx) pattern, which explains how to _read_ prices; this page explains how to _publish_ them.
 
 ## Overview
 
@@ -73,10 +73,16 @@ pub struct PriceEntry {
 }
 ```
 
-The `price` field is an integer scaled by `10^decimals`.  A BTC price of
+The `price` field is an integer scaled by `10^decimals`. A BTC price of
 $43,000.000000 with 6 decimal places is stored as `43_000_000_000`.
 
 ## Implementation
+
+<PatternCallout variant="warning" title="Educational & Unaudited Example">
+
+This pattern and its reference implementation are provided for educational purposes only. The contract code has not been audited and is not production-ready. Users must perform an appropriate security review and independent audit before deploying any contract handling real funds to a live network.
+
+</PatternCallout>
 
 <Tabs>
   <TabItem value="contract" label="Contract" default>
@@ -372,14 +378,14 @@ mod tests {
 ## Staleness Model
 
 The oracle writes the current ledger timestamp (`env.ledger().timestamp()`) into
-every `PriceEntry`.  Consumers compare this against the current ledger time:
+every `PriceEntry`. Consumers compare this against the current ledger time:
 
 ```
 age = now − entry.timestamp
 if age > max_age_secs → reject (StalePrice)
 ```
 
-The boundary is **inclusive**: `age == max_age_secs` is still valid.  One second
+The boundary is **inclusive**: `age == max_age_secs` is still valid. One second
 past the boundary is stale.
 
 This is a deliberate separation of concerns: the oracle does not know what
@@ -390,21 +396,21 @@ every call.
 
 `get_price(asset)` returns `Vec<i128>` with exactly three elements:
 
-| Index | Value      |
-|-------|-----------|
-| 0     | `price`   |
-| 1     | `decimals` (cast to `i128`) |
+| Index | Value                        |
+| ----- | ---------------------------- |
+| 0     | `price`                      |
+| 1     | `decimals` (cast to `i128`)  |
 | 2     | `timestamp` (cast to `i128`) |
 
 This matches what `oracle-consumer` expects when calling
-`env.invoke_contract(&oracle, &symbol_short!("get_price"), ...)`.  Pointing the
+`env.invoke_contract(&oracle, &symbol_short!("get_price"), ...)`. Pointing the
 consumer's `oracle_address` at a deployed `price-oracle` instance requires no
 changes to the consumer contract.
 
 ## Admin Authorization
 
-`set_price` (and `set_admin`) require `admin.require_auth()`.  The Soroban SDK
-will reject the transaction unless the admin address has signed it.  In tests,
+`set_price` (and `set_admin`) require `admin.require_auth()`. The Soroban SDK
+will reject the transaction unless the admin address has signed it. In tests,
 wrap the setup in `env.mock_all_auths()` but remove the mock for tests that
 explicitly verify the rejection path.
 
@@ -421,11 +427,13 @@ assert!(result.is_err()); // ← auth failure
 ## Best Practices
 
 **Use `persistent` storage for prices** – price entries must survive ledger
-expiry.  The admin address can use `instance` storage because the contract
+expiry. The admin address can use `instance` storage because the contract
 itself keeps it alive.
 
+**Manage storage TTLs** – persistent storage entries have a finite TTL in Soroban. Off-chain price bots or maintenance operations should extend (bump) entry TTLs regularly so consumers do not encounter `AssetNotFound` due to entry expiration.
+
 **Validate all inputs in `set_price`** – check that `price > 0` and
-`decimals ≤ 18` before writing to storage.  Malformed entries cannot be
+`decimals ≤ 18` before writing to storage. Malformed entries cannot be
 unset without a subsequent valid `set_price` call.
 
 **Emit an event on every update** – the `set_price` event lets off-chain
@@ -433,7 +441,7 @@ monitors and indexers build a complete price history without polling contract
 state.
 
 **Keep decimals consistent** – choose a fixed decimal scale per asset and
-document it.  Changing decimals across updates will confuse consumers that
+document it. Changing decimals across updates will confuse consumers that
 cache the scale.
 
 **Rotate the admin key periodically** – use `set_admin` to rotate the admin to
@@ -441,12 +449,25 @@ a new key if the current key is compromised.
 
 ## Security Considerations
 
-| Risk | Mitigation |
-|------|-----------|
-| Admin key compromise | Rotate via `set_admin`; consider multi-sig admin |
-| Stale prices used downstream | Consumers call `get_price_checked` with tight `max_age` |
-| Integer overflow in price arithmetic | Use `checked_mul` / `checked_div` in consumers |
-| Deployment to wrong network | Verify contract address in consumer before deploying |
+| Risk                                 | Mitigation                                                            |
+| ------------------------------------ | --------------------------------------------------------------------- |
+| Admin key compromise                 | Rotate via `set_admin`; consider multi-sig admin                      |
+| Stale prices used downstream         | Consumers call `get_price_checked` with tight `max_age`               |
+| Storage entry expiration             | Off-chain bots periodically extend (bump) persistent price entry TTLs |
+| Integer overflow in price arithmetic | Use `checked_mul` / `checked_div` in consumers                        |
+| Deployment to wrong network          | Verify contract address in consumer before deploying                  |
+
+### Reentrancy Considerations
+
+Traditional reentrancy attacks do not apply to this `PriceOracle` pattern. The contract's mutating functions (`init`, `set_admin`, and `set_price`) modify state directly without invoking external contracts. Furthermore, Soroban's execution environment enforces single-threaded host-level execution per contract invocation unless control is explicitly handed off through cross-contract calls. Because this contract makes no external calls during state updates, state cannot be manipulated mid-execution by a re-entrant caller.
+
+### Storage TTL & Data Expiry Limitations
+
+Soroban uses a rent-based state model where all storage entries have a Time-To-Live (TTL):
+
+- **Persistent Storage**: Price records written via `env.storage().persistent()` will expire if their TTL lapses without renewal. If a price entry expires, subsequent calls to `get_price`, `get_price_entry`, or `get_price_checked` will return `OracleError::AssetNotFound`.
+- **Instance Storage**: The admin address stored in `env.storage().instance()` shares the lifetime of the contract instance. If the instance TTL expires, administrative functions (`set_price`, `set_admin`) will fail until the instance is restored.
+- **Operational Requirement**: Price relayers or automated off-chain services must manage storage TTL extensions (e.g. extending key TTLs during routine price updates) as an operational requirement.
 
 ## Example Files
 
@@ -455,7 +476,7 @@ a new key if the current key is compromised.
 
 ## Related Patterns
 
-- [Oracle Consumer](./oracle-consumer.mdx) – how to *read* prices from this oracle
+- [Oracle Consumer](./oracle-consumer.mdx) – how to _read_ prices from this oracle
 - [Authorization](./authorization.mdx) – `require_auth` patterns
 - [Cross-Contract Invocation](../concepts/cross-contract-invocation.md)
 - [Error Handling](./error-handling.mdx)
