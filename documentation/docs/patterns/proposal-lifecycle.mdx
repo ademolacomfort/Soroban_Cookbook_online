@@ -37,6 +37,15 @@ Pending ──► Cancelled
 
 <PatternSection id="implementation" title="Implementation">
 
+<PatternCallout variant="warning" title="Educational & Unaudited Example">
+
+This pattern and its code examples are provided for educational purposes only and have not been security audited. Do not deploy or adapt this code directly in production environments without independent security reviews and comprehensive testing.
+
+* **Reentrancy Limitations**: The illustrative contract below operates synchronously without external contract calls. However, production governance contracts (such as the full `simple-dao` example) that execute external calls during proposal execution must account for reentrancy and control-flow implications, ensuring state updates occur prior to external invocations or using reentrancy guards.
+* **Storage TTL & Data Expiry**: The example relies on Soroban `instance` storage (`env.storage().instance()`), which is subject to ledger time-to-live (TTL) and data expiration. The example does not demonstrate TTL extension (`extend_ttl`). Production implementations must account for storage rent management so proposal state and voting data do not expire unexpectedly during active governance lifecycles.
+
+</PatternCallout>
+
 <PatternCallout variant="info" title="Design principle">
 
 Encode every invalid state as a compile-time impossibility or a guarded `assert!`. Never rely on callers to pass the right state — the contract should enforce it.
@@ -282,6 +291,8 @@ mod tests {
 - **Cancellation**: Only a `Pending` proposal can be cancelled; once voting opens, the proposal must go through `finalize` instead. In production, define who can cancel and enforce it with authorization.
 - **Tie handling**: The current rule (`for > against`) treats ties as defeats. Make this explicit in your governance spec.
 - **Double execution**: Once `Executed`, the state cannot regress; a second `execute` call panics. Add any further idempotency guards inside the `execute` body.
+- **Reentrancy & External Calls**: State transition updates in the simplified example are synchronous. Production governance contracts executing arbitrary external calls (e.g., executing proposal payload actions) must update proposal state before invoking external contracts to prevent reentrancy or duplicate execution risks.
+- **Storage TTL Management**: State stored in `instance` storage is subject to Soroban storage TTL rules. In production, ensure contract instance and proposal data entries are periodically extended via `extend_ttl` so data remains live throughout proposal lifecycles.
 - **Sybil resistance**: Vote weighting (token-weighted, NFT-gated) must be added before production use.
 
 <PatternCallout variant="warning" title="Production checklist">
