@@ -1,5 +1,5 @@
 import type { SidebarsConfig } from '@docusaus/plugin-content-docs';
-import type { SidebarsConfig } from '@docusaurus/plugin-content-docs'; 
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 /**
 import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
 
